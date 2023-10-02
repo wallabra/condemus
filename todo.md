@@ -1,0 +1,6 @@
+- [ ] Sample definitions
+- [ ] Instrument definitions w/ sampler modes
+- [ ] Internal channels logic
+- [ ] Pattern & sequence definitions
+- [ ] 'Pattern channel' logic
+- [ ] ZIP saving and loading funcitonality
