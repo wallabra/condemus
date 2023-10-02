@@ -1,4 +1,12 @@
 Condensed Musicality
----
-:author: Gustavo Ramos Rehermann (wallabra) <rehermann6046@gmail.com>
+====================
+Gustavo Ramos Rehermann (wallabra)
+:description: A simplistic and flexible tracker-like music sequencer.
+:authoremail: <rehermann6046@gmail.com>
+:toc:
+:numbered:
+:keywords: music, sequencer, music editor, editor, tracker, music sequencer, music software
 
+Condensed Musicality, codename _Condemus_, is a music sequencer inspired by the
+trackers of days past, with an emphasis on simple and flexible design, and
+features which make audio ductile, easier to mold into your vision.
