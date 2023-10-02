@@ -1,11 +1,11 @@
 use std::time::Duration;
 
 /**
- A sample.
+A sample.
 
- Contains an usually small bit of audio, which can be used as a source by
- instruments.
- **/
+Contains an usually small bit of audio, which can be used as a source by
+instruments.
+**/
 pub struct Sample {
     /// The base sample-rate of the sample.
     ///
