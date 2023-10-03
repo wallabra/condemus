@@ -1,4 +1,7 @@
+//! Defines the top level code for the eframe app.
 use eframe::egui;
+
+// Credit to the egui project for the original template code which was adapted for Condemus.
 
 pub struct MyApp {
     name: String,

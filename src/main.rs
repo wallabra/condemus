@@ -1,8 +1,10 @@
+// Credit to the egui project for the original template code which was adapted for Condemus.
+
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 mod app;
 
-use crate::app::MyApp;
+use crate::app::top::MyApp;
 use eframe::egui;
 
 fn main() -> Result<(), eframe::Error> {
