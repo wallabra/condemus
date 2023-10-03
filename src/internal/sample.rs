@@ -65,18 +65,6 @@ impl Sample {
         &mut self.buf
     }
 
-    /// Wraps this sample into a 'slot', aka an Option of Self.
-    ///
-    /// Unlike simply using Some(...), this automatically converts empty samples
-    /// into Nones.
-    pub fn as_slot(self) -> Option<Self> {
-        if self.buf.is_empty() {
-            None
-        } else {
-            Some(self)
-        }
-    }
-
     /// Converts an offset in seconds into the integer index of the sample at that point.
     ///
     /// ```
@@ -91,8 +79,3 @@ impl Sample {
         (offset.as_secs_f64() * self.baserate).floor() as usize
     }
 }
-
-/// A sample slot.
-///
-/// Used to represent possibly null/empty samples in the sample collection.
-pub type SampleSlot = Option<Sample>;
