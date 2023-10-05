@@ -630,6 +630,7 @@ dependencies = [
  "eframe",
  "env_logger",
  "id-arena",
+ "serde",
  "zip",
 ]
 

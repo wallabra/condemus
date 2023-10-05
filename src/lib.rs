@@ -1,2 +1,5 @@
-pub mod internal;
-pub mod player;
+pub mod app;
+pub mod defs;
+pub mod renderer;
+pub mod resample;
+pub mod stream;
