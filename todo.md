@@ -1,6 +1,11 @@
-- [ ] Sample definitions
-- [ ] Instrument definitions w/ sampler modes
-- [ ] Internal channels logic
-- [ ] Pattern & sequence definitions
-- [ ] 'Pattern channel' logic
+- [x] Sample definitions
+- [x] Instrument definitions w/ sampler modes
+- [x] Pattern & sequence definitions
+- [ ] Channel logic
+    - [x] Rendering from an internal channel
+    - [ ] Rendering from a pattern channel
+        - [ ] Step & apply rows & vacate unneeded internal channels
 - [ ] ZIP saving and loading funcitonality
+- [ ] Basic CLI player code
+- [ ] Basic audio testing
+- [ ] Figure out mapping different pitches to different samples in defs::Instrument
