@@ -37,13 +37,17 @@ impl LoopDef {
         match *self {
             None => Option::None,
 
-            Forward(section) => Some(if position.reversing {
+            Forward(section) => Some(if position.reversing && position.at < section.from {
+                0.0
+            } else if position.reversing {
                 section.from
             } else {
                 section.to
             }),
 
-            PingPong(section) => Some(if position.reversing {
+            PingPong(section) => Some(if position.reversing && position.at < section.from {
+                0.0
+            } else if position.reversing {
                 section.from
             } else {
                 section.to
@@ -56,65 +60,44 @@ impl LoopDef {
         match *self {
             None => Err("Cannot get the next start of a LoopDef::None!"),
 
-            Forward(section) => Ok(Position {
-                reversing: from.reversing,
-                at: if from.reversing {
-                    section.to
-                } else {
-                    section.from
-                },
+            Forward(section) => Ok(if from.reversing && from.at < section.from {
+                Position {
+                    reversing: false,
+                    at: 0.0,
+                }
+            } else {
+                Position {
+                    reversing: from.reversing,
+                    at: if from.reversing {
+                        section.to
+                    } else {
+                        section.from
+                    },
+                }
             }),
 
-            PingPong(section) => Ok(Position {
-                reversing: !from.reversing,
-                at: if from.reversing {
-                    section.from
-                } else {
-                    section.to
-                },
+            PingPong(section) => Ok(if from.reversing && from.at < section.from {
+                Position {
+                    reversing: false,
+                    at: 0.0,
+                }
+            } else {
+                Position {
+                    reversing: !from.reversing,
+                    at: if from.reversing {
+                        section.from
+                    } else {
+                        section.to
+                    },
+                }
             }),
         }
-    }
-
-    pub fn subsegs(&self, from: Position, after_secs: f64) -> Vec<Subseg> {
-        let mut position = from;
-        let mut subsegs: Vec<Subseg> = vec![];
-        let mut remaining = after_secs;
-
-        while remaining > 0.0 {
-            let next_stop = self.next_stop(position);
-
-            if next_stop.is_none() {
-                subsegs.push(Subseg {
-                    from: position,
-                    length: remaining,
-                });
-                return subsegs;
-            }
-
-            let next_stop = next_stop.unwrap();
-
-            let distance = (next_stop - position.at).abs();
-
-            subsegs.push(Subseg {
-                from: position,
-                length: remaining.min(distance),
-            });
-
-            if remaining <= distance {
-                return subsegs;
-            }
-
-            remaining -= distance;
-            position = self.next_start(position).unwrap();
-        }
-
-        unreachable!()
     }
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct BasicMode {
+    pub start: f64,
     pub loops: Vec<LoopDef>,
 }
 
@@ -129,6 +112,7 @@ pub enum SmoothingMode {
 pub struct GranulatingMode {
     pub segment: LoopSection,
     pub interval: f64,
+    pub gain: f64,
     pub smoothing: SmoothingMode,
 }
 
@@ -138,11 +122,24 @@ pub enum InstrumentMode {
     Granulating(GranulatingMode),
 }
 
+use super::renderer;
+impl<'def> InstrumentMode {
+    pub fn new_sampler(&self, sample: &'def Sample) -> Box<dyn renderer::SamplerState> {
+        match self {
+            Self::Basic(def) => Box::from(renderer::BasicSamplerState::new(sample, def)),
+            Self::Granulating(def) => {
+                Box::from(renderer::GranulatingSamplerState::new(sample, def))
+            }
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Instrument {
     pub sample: usize,
     pub volume: f64,
     pub pan: f64,
+    pub base_pitch: f64,
     pub mode: InstrumentMode,
 }
 
@@ -153,15 +150,23 @@ pub struct Slide {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct Vibrato {
-    depth: f64,
-    period: f64,
+pub struct Vibration {
+    pub speed: f64,
+    pub depth: f64,
 }
 
 #[derive(Serialize, Deserialize)]
 pub enum Effect {
     Portamento(Slide),
-    Vibrato(Vibrato),
+    Vibrato(Vibration),
+    Tremolo(Vibration),
+    Panbrello(Vibration),
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct EffectInstance {
+    pub length: f64,
+    pub effect: Effect,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -169,7 +174,7 @@ pub struct NoteInstruction {
     pub pitch: Option<f64>,
     pub set_pan: Option<f64>,
     pub set_volume: Option<f64>,
-    pub effects: Option<Vec<Effect>>,
+    pub effects: Option<Vec<EffectInstance>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -201,6 +206,7 @@ pub struct Pattern {
     pub instructions: Vec<Instruction>,
     pub width: u16,
     pub commands: Vec<Command>,
+    pub row_speed: f64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -224,6 +230,7 @@ pub struct Track {
 
 #[derive(Serialize, Deserialize)]
 pub struct Project {
+    pub patterns: Vec<Pattern>,
     pub samples: Vec<Sample>,
     pub instruments: Vec<Instrument>,
     pub tracks: Vec<Track>,

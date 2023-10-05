@@ -20,12 +20,12 @@ impl Resampler {
         }
     }
 
-    pub fn resample(&self, from: &[f64], to: &mut [f64]) {
+    pub fn resample(&self, from: &[f64], to: &mut [f64], gain: f64) {
         let rate_fw = to.len() as f64 / from.len() as f64;
 
         for (out_idx, out_ptr) in to.iter_mut().enumerate() {
             let pos = out_idx as f64 / rate_fw;
-            *out_ptr = self.interpolate(from, pos);
+            *out_ptr += self.interpolate(from, pos) * gain;
         }
     }
 }
