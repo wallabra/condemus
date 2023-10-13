@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Sample {
     pub audio: Vec<f64>,
     pub baserate: f64,
@@ -10,6 +10,12 @@ pub struct Sample {
 pub struct LoopSection {
     from: f64,
     to: f64,
+}
+
+impl LoopSection {
+    pub fn len(&self) -> f64 {
+        self.to - self.from
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
@@ -25,10 +31,36 @@ pub struct Position {
     pub reversing: bool,
 }
 
+impl Position {
+    pub fn after(&self, amount_secs: f64) -> Self {
+        Self {
+            at: self.at + amount_secs * (1.0 - 2.0 * self.reversing as u8 as f64),
+            reversing: self.reversing,
+        }
+    }
+
+    pub fn bounce(&self, past_secs: f64) -> Self {
+        Self {
+            reversing: !self.reversing,
+            at: self.at + 2.0 * past_secs * (-1.0 + 2.0 * self.reversing as u8 as f64),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Subseg {
     pub length: f64,
     pub from: Position,
+}
+
+impl Subseg {
+    pub fn len(&self) -> f64 {
+        self.length
+    }
+
+    pub fn end(&self) -> Position {
+        self.from.after(self.length)
+    }
 }
 
 impl LoopDef {
@@ -95,20 +127,22 @@ impl LoopDef {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct BasicMode {
     pub start: f64,
     pub loops: Vec<LoopDef>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum SmoothingMode {
     None,
+    Triangle,
     Linear(f64),
+    SquareRoot(f64),
     Cosine(f64),
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct GranulatingMode {
     pub segment: LoopSection,
     pub interval: f64,
@@ -116,15 +150,18 @@ pub struct GranulatingMode {
     pub smoothing: SmoothingMode,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum InstrumentMode {
     Basic(BasicMode),
     Granulating(GranulatingMode),
 }
 
 use super::renderer;
-impl<'def> InstrumentMode {
-    pub fn new_sampler(&self, sample: &'def Sample) -> Box<dyn renderer::SamplerState> {
+impl InstrumentMode {
+    pub fn new_sampler<'a>(&'static self, sample: &'static Sample) -> Box<dyn renderer::SamplerState + 'a>
+    where
+        'static: 'a,
+    {
         match self {
             Self::Basic(def) => Box::from(renderer::BasicSamplerState::new(sample, def)),
             Self::Granulating(def) => {
@@ -134,7 +171,7 @@ impl<'def> InstrumentMode {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Instrument {
     pub sample: usize,
     pub volume: f64,
@@ -143,19 +180,19 @@ pub struct Instrument {
     pub mode: InstrumentMode,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Slide {
     pub length: f64,
     pub amount: f64,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Vibration {
     pub speed: f64,
     pub depth: f64,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum Effect {
     Portamento(Slide),
     Vibrato(Vibration),
@@ -163,22 +200,24 @@ pub enum Effect {
     Panbrello(Vibration),
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct EffectInstance {
     pub length: f64,
     pub effect: Effect,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct NoteInstruction {
-    pub pitch: Option<f64>,
-    pub set_pan: Option<f64>,
-    pub set_volume: Option<f64>,
-    pub effects: Option<Vec<EffectInstance>>,
+    pub instrument: usize,
+    pub pitch: f64,
+    pub pan: f64,
+    pub volume: f64,
+    pub effects: Vec<EffectInstance>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum Instruction {
+    None,
     Note(NoteInstruction),
     Cut,
     Stop,
@@ -187,7 +226,7 @@ pub enum Instruction {
     Pause,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum CommandEffect {
     SetGlobalVolume(f64),
     SetTempo(f64),
@@ -195,40 +234,41 @@ pub enum CommandEffect {
     SlideGlobalVolume(Slide),
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Command {
     pub offset: f64,
     pub effect: CommandEffect,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Pattern {
     pub instructions: Vec<Instruction>,
     pub width: u16,
+    pub height: u16,
     pub commands: Vec<Command>,
     pub row_speed: f64,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PatternRef {
     pub position: f64,
     pub pattern: usize,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct TrackMetadata {
     pub name: String,
     pub init_tempo: f64,
     pub init_volume: f64,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Track {
     pub pattern_refs: Vec<PatternRef>,
     pub metadata: TrackMetadata,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Project {
     pub patterns: Vec<Pattern>,
     pub samples: Vec<Sample>,
