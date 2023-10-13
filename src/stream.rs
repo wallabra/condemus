@@ -12,7 +12,10 @@ impl<'a> Sink<'a> {
         self.out.len() as f64 * self.rate
     }
 
-    pub fn slice<'b>(&'b mut self, index: Range<f64>) -> Self where 'b: 'a {
+    pub fn slice<'b>(&'b mut self, index: Range<f64>) -> Self
+    where
+        'b: 'a,
+    {
         let start = (index.start * self.rate) as usize;
         let end = (index.end * self.rate) as usize;
 

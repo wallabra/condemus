@@ -1,10 +1,10 @@
 - [x] Sample definitions
 - [x] Instrument definitions w/ sampler modes
 - [x] Pattern & sequence definitions
-- [ ] Channel logic
+- [x] Channel logic
     - [x] Rendering from an internal channel
-    - [ ] Rendering from a pattern channel
-        - [ ] Step & apply rows & vacate unneeded internal channels
+    - [x] Rendering from a pattern channel
+        - [x] Step & apply rows & vacate unneeded internal channels
 - [ ] ZIP saving and loading funcitonality
 - [ ] Basic CLI player code
 - [ ] Basic audio testing
