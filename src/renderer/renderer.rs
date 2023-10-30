@@ -1,26 +1,34 @@
-use super::defs;
+use super::common::defs::*;
 use super::defs::{Position, Subseg};
 use super::stream::Sink;
+use std::sync::Arc;
 
 pub trait SamplerState {
-    fn render(&mut self, sink: &mut Sink<'_>, gain: f64);
+    fn render(&mut self, sink: &Sink<'_>, from: usize, to: usize, gain: f64);
     fn next_loop(&mut self) -> bool;
 }
 
 pub struct BasicSamplerState {
-    sample: &'static defs::Sample,
-    def: &'static defs::BasicMode,
+    data: Arc<defs::Project>,
+    def: defs::BasicMode,
+    sample: usize,
     position: defs::Position,
     curr_loop: usize,
 }
 
 impl BasicSamplerState {
-    pub fn new(sample: &'static defs::Sample, def: &'static defs::BasicMode) -> Self {
+    fn get_sample(&self) -> &defs::Sample {
+        &self.data.samples[self.sample]
+    }
+
+    pub fn new(data: Arc<defs::Project>, sample: usize, def: defs::BasicMode) -> Self {
+        let start = def.start;
         Self {
+            data,
             sample,
             def,
             position: Position {
-                at: def.start,
+                at: start,
                 reversing: false,
             },
             curr_loop: 0,
@@ -31,11 +39,19 @@ impl BasicSamplerState {
         self.curr_loop += 1;
     }
 
-    fn this_loop(&self) -> Option<&'static defs::LoopDef> {
+    fn this_loop(&self) -> Option<&defs::LoopDef> {
         self.def.loops.get(self.curr_loop)
     }
 
-    fn render_subseg(&self, subseg: &defs::Subseg, sink: &mut Sink<'_>, offs: f64, gain: f64) {
+    fn render_subseg(
+        &self,
+        subseg: &defs::Subseg,
+        sink: &Sink<'_>,
+        from: usize,
+        to: usize,
+        offs: f64,
+        gain: f64,
+    ) {
         let start = subseg.from.at + offs;
         let reversing = subseg.from.reversing;
         let length = subseg.length;
@@ -43,14 +59,15 @@ impl BasicSamplerState {
         let left = if reversing { start - length } else { start };
         let right = if reversing { start } else { start + length };
 
-        let left_o = (left * sink.rate) as usize;
-        let right_o = (right * sink.rate) as usize;
+        let left_o = from + (left * sink.rate) as usize;
+        let right_o = from + (right * sink.rate) as usize;
 
-        let left_s = (left * self.sample.baserate) as usize;
-        let right_s = (right * self.sample.baserate) as usize;
+        let sample = self.get_sample();
+        let left_s = (left * sample.baserate) as usize;
+        let right_s = (right * sample.baserate) as usize;
 
         sink.resampler.resample(
-            &self.sample.audio[left_s..=right_s],
+            &sample.audio[left_s..=right_s],
             &mut sink.out[left_o..=right_o],
             gain,
         );
@@ -113,14 +130,14 @@ impl BasicSamplerState {
 }
 
 impl SamplerState for BasicSamplerState {
-    fn render(&mut self, sink: &mut Sink<'_>, gain: f64) {
+    fn render(&mut self, sink: &Sink<'_>, from: usize, to: usize, gain: f64) {
         let mut render_offs: f64 = 0.0;
-        let length = sink.out.len() as f64 / sink.rate;
+        let length = (to - from) as f64 / sink.rate;
 
         let subsegs = self.subsegs(self.position, length);
 
         for subseg in &subsegs {
-            self.render_subseg(&subseg, sink, render_offs, gain);
+            self.render_subseg(&subseg, sink, from, to, render_offs, gain);
             render_offs += subseg.length;
         }
 
@@ -167,21 +184,29 @@ impl GranuleState {
         }
     }
 
-    pub fn render(&mut self, sink: &mut Sink<'_>, gain: f64) {
+    pub fn render(
+        &mut self,
+        sample: &defs::Sample,
+        def: &defs::GranulatingMode,
+        sink: &Sink<'_>,
+        gain: f64,
+    ) {
         // WIP
     }
 }
 
 pub struct GranulatingSamplerState {
-    sample: &'static defs::Sample,
-    def: &'static defs::GranulatingMode,
+    data: Arc<defs::Project>,
+    sample: usize,
+    def: defs::GranulatingMode,
     granules: Vec<GranuleState>,
     age: f64,
 }
 
 impl GranulatingSamplerState {
-    pub fn new(sample: &'static defs::Sample, def: &'static defs::GranulatingMode) -> Self {
+    pub fn new(data: Arc<defs::Project>, sample: usize, def: defs::GranulatingMode) -> Self {
         Self {
+            data,
             sample,
             def,
             granules: vec![],
@@ -198,21 +223,21 @@ impl SamplerState for GranulatingSamplerState {
         false
     }
 
-    fn render(&mut self, sink: &mut Sink<'_>, gain: f64) {
+    fn render(&mut self, sink: &Sink<'_>, gain: f64) {
         for granule in &mut self.granules {
-            granule.render(sink, gain);
+            granule.render(&self.data.samples[self.sample], &self.def, sink, gain);
         }
     }
 }
 
 #[derive(Clone)]
 pub struct EffectState {
-    def: &'static defs::EffectInstance,
+    def: defs::EffectInstance,
     pos: f64,
 }
 
 impl EffectState {
-    pub fn new(def: &'static defs::EffectInstance) -> Self {
+    pub fn new(def: defs::EffectInstance) -> Self {
         Self { def, pos: 0.0 }
     }
 
@@ -232,25 +257,32 @@ pub struct ChannelState {
     pitch: f64,
     effects: Vec<EffectState>,
     sampler: Box<dyn SamplerState>,
-    instrument: &'static defs::Instrument,
-    sample: &'static defs::Sample,
+    data: Arc<defs::Project>,
+    instrument: usize,
+    sample: usize,
     paused: bool,
 }
 
 impl ChannelState {
-    pub fn new<'a>(
-        sample: &'static defs::Sample,
-        instrument: &'static defs::Instrument,
-        pitch: f64,
-    ) -> Self
-    where
-        'a: 'static,
-    {
+    fn get_sample(&self) -> &defs::Sample {
+        &self.data.samples[self.sample]
+    }
+
+    fn get_instrument(&self) -> &defs::Instrument {
+        &self.data.instruments[self.instrument]
+    }
+
+    pub fn new(data: Arc<defs::Project>, sample: usize, instrument: usize, pitch: f64) -> Self {
+        let sampler = data.instruments[instrument]
+            .mode
+            .new_sampler(data.clone(), sample);
+
         Self {
+            data,
             instrument,
             sample,
             pitch,
-            sampler: instrument.mode.new_sampler::<'a>(sample),
+            sampler,
             effects: vec![],
             panning: 0.0,
             volume: 1.0,
@@ -258,19 +290,25 @@ impl ChannelState {
         }
     }
 
-    pub fn from_instruction(
-        project: &'static defs::Project,
-        ins: &'static defs::NoteInstruction,
-    ) -> Self {
-        let instrument = &project.instruments[ins.instrument];
-        let sample = &project.samples[instrument.sample];
+    pub fn from_instruction(data: Arc<defs::Project>, ins: &defs::NoteInstruction) -> Self {
+        let sampler = data.instruments[ins.instrument]
+            .mode
+            .new_sampler(data.clone(), data.instruments[ins.instrument].sample);
+
+        let sample = data.instruments[ins.instrument].sample;
 
         Self {
-            instrument,
+            data,
+            instrument: ins.instrument,
             sample,
             pitch: ins.pitch,
-            sampler: instrument.mode.new_sampler(sample),
-            effects: ins.effects.iter().map(EffectState::new).collect::<_>(),
+            sampler,
+            effects: ins
+                .effects
+                .iter()
+                .cloned()
+                .map(EffectState::new)
+                .collect::<_>(),
             panning: ins.pan,
             volume: ins.volume,
             paused: false,
@@ -291,7 +329,7 @@ impl ChannelState {
 
     fn add_effects(&mut self, instruction: &'static defs::NoteInstruction) {
         for effect in &instruction.effects {
-            self.effects.push(EffectState::new(effect));
+            self.effects.push(EffectState::new(effect.clone()));
         }
     }
 
@@ -350,23 +388,23 @@ impl ChannelState {
         }
     }
 
-    fn render<'a, 'b>(&mut self, left_sink: &'a mut Sink<'b>, right_sink: &'a mut Sink<'b>) {
+    fn render<'a, 'b>(&mut self, left_sink: &Sink<'b>, right_sink: &Sink<'b>, cap: f64) {
         if self.paused {
             return;
         }
 
         debug_assert!(left_sink.rate == right_sink.rate);
 
-        let pitch_rate = 2.0_f64.powf((self.pitch - self.instrument.base_pitch) / 12.0);
+        let pitch_rate = 2.0_f64.powf((self.pitch - self.get_instrument().base_pitch) / 12.0);
 
         left_sink.rate *= pitch_rate;
         right_sink.rate *= pitch_rate;
 
         self.sampler
-            .render(left_sink, self.volume * (1.0 - self.panning) / 2.0);
+            .render(left_sink, 0, cap, self.volume * (1.0 - self.panning) / 2.0);
 
         self.sampler
-            .render(right_sink, self.volume * (1.0 + self.panning) / 2.0);
+            .render(right_sink, 0, cap, self.volume * (1.0 + self.panning) / 2.0);
 
         left_sink.rate /= pitch_rate;
         right_sink.rate /= pitch_rate;
@@ -380,8 +418,8 @@ impl ChannelState {
 }
 
 pub struct PatternState {
-    project: &'static defs::Project,
-    pattern: &'static defs::Pattern,
+    data: Arc<defs::Project>,
+    pattern: usize,
     row: usize,
     row_speed: f64,      // rows per second
     inner_position: f64, // varies from 0 to 1
@@ -389,26 +427,34 @@ pub struct PatternState {
 }
 
 impl PatternState {
-    pub fn new(project: &'static defs::Project, pattern: &'static defs::Pattern) -> Self {
+    pub fn new(data: Arc<defs::Project>, pattern: usize) -> Self {
         let mut channels: Vec<Option<ChannelState>> = vec![];
 
-        for _ in 0..pattern.width {
+        for _ in 0..data.patterns[pattern].width {
             channels.push(None);
         }
 
+        let row_speed = data.patterns[pattern].row_speed;
+
         Self {
-            project,
+            data,
             pattern,
             channels,
             row: 0,
-            row_speed: pattern.row_speed,
+            row_speed,
             inner_position: 0.0,
         }
     }
 
+    fn get_pattern(&self) -> &defs::Pattern {
+        &self.data.patterns[self.pattern]
+    }
+
     pub fn curr_instructions(&self) -> &[defs::Instruction] {
-        &self.pattern.instructions
-            [self.row * self.pattern.width as usize..(self.row + 1) * self.pattern.width as usize]
+        let pattern = self.get_pattern();
+        let width = pattern.width as usize;
+
+        &pattern.instructions[self.row * width..(self.row + 1) * width]
     }
 
     pub fn channels(&mut self) -> &mut Vec<Option<ChannelState>> {
@@ -425,6 +471,7 @@ impl PatternState {
         let mut pos = self.inner_position;
         let mut res: Vec<f64> = Vec::new();
         let mut row = self.row;
+        let height = self.get_pattern().height as usize;
 
         loop {
             let to_next_row = (1.0 - pos) * self.row_speed;
@@ -435,7 +482,7 @@ impl PatternState {
             }
 
             row += 1;
-            if row >= self.pattern.height as usize {
+            if row >= height {
                 break;
             }
             pos = 0.0;
@@ -444,19 +491,20 @@ impl PatternState {
         res
     }
 
-    fn render_subseg<'a, 'b>(
+    fn render_subseg<'a>(
         &mut self,
-        left_sink: &'a mut Sink<'b>,
-        right_sink: &'a mut Sink<'b>,
+        left_sink: &Sink<'a>,
+        right_sink: &Sink<'a>,
+        start: f64,
         subseg: f64,
-    ) where
-        'b: 'a,
-        'a: 'b,
-    {
-        let row_idx_start = self.pattern.width as usize * self.row;
+    ) {
+        let width = self.data.patterns[self.pattern].width as usize;
+        let row_idx_start = width * self.row;
         let row =
-            &self.pattern.instructions[row_idx_start..row_idx_start + self.pattern.width as usize];
+            &self.data.patterns[self.pattern].instructions[row_idx_start..row_idx_start + width];
         let speed = self.row_speed;
+
+        let cap = subseg / speed;
 
         for (channel, instruction) in self.channels.iter_mut().zip(row.iter()) {
             use defs::Instruction::*;
@@ -492,71 +540,57 @@ impl PatternState {
                     unsafe { channel.as_mut().unwrap_unchecked() }.toggle_pause();
                 }
                 Note(note_ins) => {
-                    *channel = Some(ChannelState::from_instruction(self.project, note_ins));
+                    *channel = Some(ChannelState::from_instruction(self.data.clone(), note_ins));
                 }
             };
 
             if let Some(channel) = channel {
-                channel.render(
-                    &mut left_sink.slice(0.0..subseg / speed),
-                    &mut right_sink.slice(0.0..subseg / speed),
-                );
+                channel.render(left_slice, right_slice, cap);
             }
         }
     }
 
-    pub fn render<'a, 'b>(
-        &mut self,
-        left_sink: &'a mut Sink<'b>,
-        right_sink: &'a mut Sink<'b>,
-    ) -> bool
-    where
-        'b: 'a,
-        'a: 'b,
-    {
-        debug_assert!(self.row < self.pattern.height as usize);
+    pub fn render<'b>(&mut self, left_sink: &'b Sink<'b>, right_sink: &'b Sink<'b>) -> bool {
+        debug_assert!(self.row < self.get_pattern().height as usize);
 
         let secs = left_sink.out.len() as f64 / left_sink.rate;
         let subsegs = self.subsegs(secs);
         let mut start: f64 = 0.0;
 
-        debug_assert!(!subsegs.is_empty());
+        let sink_len = left_sink.len();
+
+        if subsegs.is_empty() {
+            return false;
+        }
 
         let new_inner_position = unsafe { subsegs.iter().last().unwrap_unchecked() };
         let first_subseg = subsegs[0];
-        self.render_subseg(left_sink, right_sink, first_subseg);
+        self.render_subseg(&left_sink, &right_sink, start, first_subseg);
         start += first_subseg;
 
-        if subsegs.len() > 0 {
+        if subsegs.len() > 1 {
             self.inner_position = 0.0;
+
+            for seg in &subsegs[1..] {
+                self.row += 1;
+                self.render_subseg(&left_sink, &right_sink, start, *seg);
+                start += seg / self.row_speed;
+            }
         }
 
-        let sink_len = left_sink.len();
-
-        for seg in &subsegs[1..] {
-            self.row += 1;
-            self.render_subseg(
-                &mut left_sink.slice(start..sink_len),
-                &mut right_sink.slice(start..sink_len),
-                *seg,
-            );
-            start += seg / self.row_speed;
-        }
-
-        self.inner_position += new_inner_position;
-        self.row >= self.pattern.height as usize
+        true
     }
 }
 
 pub struct RenderState {
-    data: &'static defs::Project,
+    data: Arc<defs::Project>,
     curr_track: Option<&'static defs::Track>,
     pattern_states: Vec<PatternState>,
     position: f64,
 }
 
 impl RenderState {
-    pub fn new(data: &'static defs::Project) -> Self {
+    pub fn new(data: Arc<defs::Project>) -> Self {
         Self {
             data,
             curr_track: None,
@@ -572,14 +606,14 @@ impl RenderState {
                     continue;
                 }
 
-                self.add_pattern_state(&self.data.patterns[pref.pattern]);
+                self.add_pattern_state(pref.pattern);
             }
         }
     }
 
-    fn add_pattern_state(&mut self, pattern: &'static defs::Pattern) {
+    fn add_pattern_state(&mut self, pattern: usize) {
         self.pattern_states
-            .push(PatternState::new(self.data, pattern));
+            .push(PatternState::new(self.data.clone(), pattern));
     }
 
     pub fn set_track(&mut self, which: usize) {
@@ -592,7 +626,7 @@ impl RenderState {
         self.curr_track = None;
     }
 
-    pub fn render<'a, 'b>(&mut self, left_sink: &'a mut Sink<'b>, right_sink: &'a mut Sink<'b>)
+    pub fn render<'a, 'b>(&mut self, left_sink: &Sink<'b>, right_sink: &Sink<'b>)
     where
         'a: 'b,
     {
