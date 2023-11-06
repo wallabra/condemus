@@ -94,7 +94,7 @@ pub enum InstrumentMode {
     Granulating(GranulatingMode),
 }
 
-use super::renderer;
+use crate::renderer;
 impl InstrumentMode {
     pub fn new_sampler<'a>(
         &self,
