@@ -1,7 +1,3 @@
-pub mod resample;
-pub mod stream;
-pub mod renderer;
+pub mod samplers;
 
-pub use resample::*;
-pub use stream::*;
-pub use renderer::*;
+pub use samplers::*;

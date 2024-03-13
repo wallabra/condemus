@@ -1,5 +1,5 @@
-use crate::{common, common::*};
-use super::stream::{AudioBufferSlice, StereoSource};
+use crate::common;
+use crate::common::*;
 use std::sync::Arc;
 
 pub trait SamplerState {
@@ -42,13 +42,7 @@ impl BasicSamplerState {
         self.def.loops.get(self.curr_loop)
     }
 
-    fn render_subseg(
-        &self,
-        subseg: &Subseg,
-        sink: AudioBufferSlice<'_>,
-        offs: f64,
-        gain: f64,
-    ) {
+    fn render_subseg(&self, subseg: &Subseg, sink: dasp::, offs: f64, gain: f64) {
         let start = subseg.from.at + offs;
         let reversing = subseg.from.reversing;
         let length = subseg.length;
@@ -385,7 +379,12 @@ impl ChannelState {
         }
     }
 
-    fn render<'a>(&mut self, left_sink: AudioBufferSlice<'a>, right_sink: AudioBufferSlice<'a>, cap: f64) {
+    fn render<'a>(
+        &mut self,
+        left_sink: AudioBufferSlice<'a>,
+        right_sink: AudioBufferSlice<'a>,
+        cap: f64,
+    ) {
         if self.paused {
             return;
         }
@@ -547,7 +546,11 @@ impl PatternState {
         }
     }
 
-    pub fn render<'a>(&mut self, left_sink: AudioBufferSlice<'a>, right_sink: AudioBufferSlice<'a>) -> bool {
+    pub fn render<'a>(
+        &mut self,
+        left_sink: AudioBufferSlice<'a>,
+        right_sink: AudioBufferSlice<'a>,
+    ) -> bool {
         debug_assert!(self.row < self.get_pattern().height as usize);
 
         let secs = left_sink.out.len() as f64 / left_sink.rate;
@@ -625,8 +628,7 @@ impl RenderState {
 }
 
 impl StereoSource for RenderState {
-    fn render<'a>(&mut self, left_sink: AudioBufferSlice<'a>, right_sink: AudioBufferSlice<'a>)
-    {
+    fn render<'a>(&mut self, left_sink: AudioBufferSlice<'a>, right_sink: AudioBufferSlice<'a>) {
         left_sink.out.fill(0.0);
         right_sink.out.fill(0.0);
 

@@ -5,8 +5,11 @@ edition = "2021"
 
 [dependencies]
 creak = "0.3.0"
+dasp = { version = "0.11.0", features = ["slice", "signal", "interpolate", "interpolate-floor", "interpolate-linear", "interpolate-sinc"] }
 eframe = "0.22.0"
 env_logger = "0.10.0"
 id-arena = "2.2.1"
+interpolate = "0.2.3"
 serde = { version = "1.0.188", features = ["derive"] }
+signal = "0.7.0"
 zip = "0.6.6"
