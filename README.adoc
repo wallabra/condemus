@@ -7,6 +7,9 @@ Gustavo Ramos Rehermann (wallabra)
 :numbered:
 :keywords: music, sequencer, music editor, editor, tracker, music sequencer, music software
 
+WARNING: This is a work in progress! There are missing features and condemus cannot yet be
+used to make or playback music.
+
 Condensed Musicality, codename _Condemus_, is a music sequencer inspired by the
 trackers of days past, with an emphasis on simple and flexible design, and
 features which make audio ductile, easier to mold into your vision.
